@@ -1,69 +1,381 @@
-import Image from "next/image";
+'use client';
+
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { TodoItem, NoteItem, Priority, ActiveView } from '../types';
+import { 
+  getStoredTodos, 
+  saveStoredTodos, 
+  getStoredNotes, 
+  saveStoredNotes,
+} from '../lib/storage';
+import { Header } from '../components/Header';
+import { Sidebar } from '../components/Sidebar';
+import { StatsOverview } from '../components/StatsOverview';
+import { TodoList } from '../components/TodoList';
+import { NotesView } from '../components/NotesView';
+import { ItemModal } from '../components/ItemModal';
+import { NoteModal } from '../components/NoteModal';
 
 export default function Home() {
+  const [mounted, setMounted] = useState(false);
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [todos, setTodos] = useState<TodoItem[]>([]);
+  const [notes, setNotes] = useState<NoteItem[]>([]);
+
+  // Navigation & Filtering
+  const [activeView, setActiveView] = useState<ActiveView>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string | undefined>();
+  const [selectedPriority, setSelectedPriority] = useState<Priority | undefined>();
+  const [sortBy, setSortBy] = useState<'dueDate' | 'priority' | 'createdAt' | 'alphabetical'>('priority');
+
+  // Modals
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [editingTodo, setEditingTodo] = useState<TodoItem | null>(null);
+
+  const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
+  const [editingNote, setEditingNote] = useState<NoteItem | null>(null);
+
+  // Initialize from LocalStorage
+  useEffect(() => {
+    queueMicrotask(() => {
+      setTodos(getStoredTodos());
+      setNotes(getStoredNotes());
+      setMounted(true);
+    });
+  }, []);
+
+  // Persist todos and notes to localStorage
+  useEffect(() => {
+    if (mounted) saveStoredTodos(todos);
+  }, [todos, mounted]);
+
+  useEffect(() => {
+    if (mounted) saveStoredNotes(notes);
+  }, [notes, mounted]);
+
+
+  // Derive unique categories across todos and notes
+  const categories = useMemo(() => {
+    const set = new Set<string>(['Engineering', 'Design', 'Product', 'Personal', 'Ideas']);
+    todos.forEach((t) => { if (t.category) set.add(t.category); });
+    notes.forEach((n) => { if (n.category) set.add(n.category); });
+    return Array.from(set);
+  }, [todos, notes]);
+
+  // Today's date string YYYY-MM-DD
+  const todayStr = useMemo(() => new Date().toISOString().split('T')[0], []);
+
+  // Filter and Sort Todos
+  const filteredTodos = useMemo(() => {
+    const result = todos.filter((todo) => {
+      // Search query filter
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchesTitle = todo.title.toLowerCase().includes(q);
+        const matchesDesc = todo.description?.toLowerCase().includes(q) || false;
+        const matchesCat = todo.category?.toLowerCase().includes(q) || false;
+        const matchesNote = todo.note?.toLowerCase().includes(q) || false;
+        if (!matchesTitle && !matchesDesc && !matchesCat && !matchesNote) return false;
+      }
+
+      // Explicit category filter
+      if (selectedCategory && todo.category !== selectedCategory) return false;
+
+      // Explicit priority filter
+      if (selectedPriority && todo.priority !== selectedPriority) return false;
+
+      // View filter
+      if (activeView === 'today') {
+        return todo.dueDate === todayStr;
+      }
+      if (activeView === 'upcoming') {
+        return todo.dueDate && todo.dueDate > todayStr;
+      }
+      if (activeView === 'completed') {
+        return todo.completed;
+      }
+
+      return true;
+    });
+
+    // Sorting
+    const priorityWeight: Record<Priority, number> = { high: 3, medium: 2, low: 1 };
+
+    result.sort((a, b) => {
+      if (activeView !== 'completed') {
+        if (a.completed !== b.completed) {
+          return a.completed ? 1 : -1;
+        }
+      }
+
+      if (sortBy === 'priority') {
+        return priorityWeight[b.priority] - priorityWeight[a.priority];
+      }
+      if (sortBy === 'dueDate') {
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return a.dueDate.localeCompare(b.dueDate);
+      }
+      if (sortBy === 'alphabetical') {
+        return a.title.localeCompare(b.title);
+      }
+      if (sortBy === 'createdAt') {
+        return b.createdAt.localeCompare(a.createdAt);
+      }
+      return 0;
+    });
+
+    return result;
+  }, [todos, searchQuery, selectedCategory, selectedPriority, activeView, todayStr, sortBy]);
+
+  // Task Mutations
+  const handleToggleComplete = useCallback((id: string) => {
+    setTodos((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          return {
+            ...t,
+            completed: !t.completed,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return t;
+      })
+    );
+  }, []);
+
+  const handleQuickAdd = (title: string, priority: Priority, category: string) => {
+    const newTodo: TodoItem = {
+      id: `todo-${Date.now()}`,
+      title,
+      completed: false,
+      priority,
+      category,
+      dueDate: todayStr,
+      subtasks: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setTodos((prev) => [newTodo, ...prev]);
+  };
+
+  const handleSaveTodo = (todoData: Partial<TodoItem>) => {
+    if (editingTodo) {
+      setTodos((prev) =>
+        prev.map((t) => (t.id === editingTodo.id ? ({ ...t, ...todoData, updatedAt: new Date().toISOString() } as TodoItem) : t))
+      );
+      setEditingTodo(null);
+    } else {
+      const newTodo: TodoItem = {
+        id: `todo-${Date.now()}`,
+        title: todoData.title || 'Untitled Task',
+        description: todoData.description,
+        completed: false,
+        priority: todoData.priority || 'medium',
+        category: todoData.category || 'General',
+        dueDate: todoData.dueDate,
+        note: todoData.note,
+        subtasks: todoData.subtasks || [],
+        color: todoData.color,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setTodos((prev) => [newTodo, ...prev]);
+    }
+  };
+
+  const handleDeleteTodo = (id: string) => {
+    setTodos((prev) => prev.filter((t) => t.id !== id));
+  };
+
+
+
+  const handleToggleSubtask = (todoId: string, subtaskId: string) => {
+    setTodos((prev) =>
+      prev.map((t) => {
+        if (t.id === todoId) {
+          const updatedSubtasks = t.subtasks.map((s) =>
+            s.id === subtaskId ? { ...s, completed: !s.completed } : s
+          );
+          return {
+            ...t,
+            subtasks: updatedSubtasks,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return t;
+      })
+    );
+  };
+
+  // Note Mutations
+  const handleSaveNote = (noteData: Partial<NoteItem>) => {
+    if (editingNote) {
+      setNotes((prev) =>
+        prev.map((n) => (n.id === editingNote.id ? ({ ...n, ...noteData, updatedAt: new Date().toISOString() } as NoteItem) : n))
+      );
+      setEditingNote(null);
+    } else {
+      const newNote: NoteItem = {
+        id: `note-${Date.now()}`,
+        title: noteData.title || 'Untitled Note',
+        content: noteData.content || '',
+        category: noteData.category || 'Ideas',
+        color: noteData.color,
+        isPinned: noteData.isPinned || false,
+        linkedTodoId: noteData.linkedTodoId,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+      setNotes((prev) => [newNote, ...prev]);
+    }
+  };
+
+  const handleDeleteNote = (id: string) => {
+    setNotes((prev) => prev.filter((n) => n.id !== id));
+  };
+
+  const handleTogglePin = (id: string) => {
+    setNotes((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, isPinned: !n.isPinned } : n))
+    );
+  };
+
+
+
+  // Global Keyboard Shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault();
+        const input = document.querySelector<HTMLInputElement>('.search-input');
+        input?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="app-container">
+      {/* Sidebar Navigation */}
+      <Sidebar
+        activeView={activeView}
+        onSelectView={setActiveView}
+        selectedCategory={selectedCategory}
+        onSelectCategory={setSelectedCategory}
+        selectedPriority={selectedPriority}
+        onSelectPriority={setSelectedPriority}
+        categories={categories}
+        todos={todos}
+        notes={notes}
+        isMobileOpen={isMobileOpen}
+        onCloseMobile={() => setIsMobileOpen(false)}
+        isCollapsed={isSidebarCollapsed}
+      />
+
+      {/* Main Content Area */}
+      <div className="main-wrapper">
+        <Header
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          activeView={activeView}
+          onOpenTaskModal={() => {
+            setEditingTodo(null);
+            setIsTaskModalOpen(true);
+          }}
+          onOpenNoteModal={() => {
+            setEditingNote(null);
+            setIsNoteModalOpen(true);
+          }}
+          onToggleMobileMenu={() => setIsMobileOpen(true)}
+          isSidebarCollapsed={isSidebarCollapsed}
+          onToggleSidebar={() => setIsSidebarCollapsed(p => !p)}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+
+        <main className="content-body">
+          {/* Top Metric Stats Overview */}
+          <StatsOverview
+            totalTasks={todos.length}
+            completedTasks={todos.filter((t) => t.completed).length}
+            highTasks={todos.filter((t) => !t.completed && t.priority === 'high').length}
+            totalNotes={notes.length}
+          />
+
+          {/* View Dispatcher */}
+          {activeView === 'notes' ? (
+            <NotesView
+              notes={notes}
+              searchQuery={searchQuery}
+              categories={categories}
+              selectedCategory={selectedCategory}
+              onCategoryChange={setSelectedCategory}
+              onOpenNoteModal={() => {
+                setEditingNote(null);
+                setIsNoteModalOpen(true);
+              }}
+              onEditNote={(note) => {
+                setEditingNote(note);
+                setIsNoteModalOpen(true);
+              }}
+              onDeleteNote={handleDeleteNote}
+              onTogglePin={handleTogglePin}
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+          ) : (
+            <TodoList
+              todos={filteredTodos}
+              activeView={activeView}
+              selectedCategory={selectedCategory}
+              selectedPriority={selectedPriority}
+              onPriorityChange={setSelectedPriority}
+              searchQuery={searchQuery}
+              sortBy={sortBy}
+              onSortChange={setSortBy}
+              onToggleComplete={handleToggleComplete}
+              onEdit={(todo) => {
+                setEditingTodo(todo);
+                setIsTaskModalOpen(true);
+              }}
+              onDelete={handleDeleteTodo}
+              onToggleSubtask={handleToggleSubtask}
+              onQuickAdd={handleQuickAdd}
+              onOpenTaskModal={() => {
+                setEditingTodo(null);
+                setIsTaskModalOpen(true);
+              }}
+              categories={categories}
+            />
+          )}
+        </main>
+      </div>
+
+      {/* Task Creation & Editing Modal */}
+      <ItemModal
+        key={isTaskModalOpen ? (editingTodo?.id || 'new-todo') : 'closed-todo'}
+        isOpen={isTaskModalOpen}
+        onClose={() => {
+          setIsTaskModalOpen(false);
+          setEditingTodo(null);
+        }}
+        onSave={handleSaveTodo}
+        initialTodo={editingTodo}
+        categories={categories}
+      />
+
+      {/* Note Creation & Editing Modal */}
+      <NoteModal
+        key={isNoteModalOpen ? (editingNote?.id || 'new-note') : 'closed-note'}
+        isOpen={isNoteModalOpen}
+        onClose={() => {
+          setIsNoteModalOpen(false);
+          setEditingNote(null);
+        }}
+        onSave={handleSaveNote}
+        initialNote={editingNote}
+        categories={categories}
+      />
     </div>
   );
 }
