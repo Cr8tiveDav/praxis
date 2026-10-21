@@ -15,6 +15,7 @@ import { TodoList } from '../components/TodoList';
 import { NotesView } from '../components/NotesView';
 import { ItemModal } from '../components/ItemModal';
 import { NoteModal } from '../components/NoteModal';
+import { ConfirmModal } from '../components/ConfirmModal';
 
 export default function Home() {
   const [mounted, setMounted] = useState(false);
@@ -36,6 +37,13 @@ export default function Home() {
 
   const [isNoteModalOpen, setIsNoteModalOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<NoteItem | null>(null);
+
+  // Deletion Confirmation
+  const [deleteTarget, setDeleteTarget] = useState<{
+    type: 'todo' | 'note';
+    id: string;
+    title: string;
+  } | null>(null);
 
   // Initialize from LocalStorage
   useEffect(() => {
@@ -186,8 +194,14 @@ export default function Home() {
     }
   };
 
-  const handleDeleteTodo = (id: string) => {
-    setTodos((prev) => prev.filter((t) => t.id !== id));
+  const handleRequestDeleteTodo = (id: string) => {
+    const target = todos.find((t) => t.id === id);
+    if (!target) return;
+    setDeleteTarget({
+      type: 'todo',
+      id: target.id,
+      title: target.title,
+    });
   };
 
 
@@ -233,8 +247,24 @@ export default function Home() {
     }
   };
 
-  const handleDeleteNote = (id: string) => {
-    setNotes((prev) => prev.filter((n) => n.id !== id));
+  const handleRequestDeleteNote = (id: string) => {
+    const target = notes.find((n) => n.id === id);
+    if (!target) return;
+    setDeleteTarget({
+      type: 'note',
+      id: target.id,
+      title: target.title,
+    });
+  };
+
+  const handleConfirmDelete = () => {
+    if (!deleteTarget) return;
+    if (deleteTarget.type === 'todo') {
+      setTodos((prev) => prev.filter((t) => t.id !== deleteTarget.id));
+    } else if (deleteTarget.type === 'note') {
+      setNotes((prev) => prev.filter((n) => n.id !== deleteTarget.id));
+    }
+    setDeleteTarget(null);
   };
 
   const handleTogglePin = (id: string) => {
@@ -320,7 +350,7 @@ export default function Home() {
                 setEditingNote(note);
                 setIsNoteModalOpen(true);
               }}
-              onDeleteNote={handleDeleteNote}
+              onDeleteNote={handleRequestDeleteNote}
               onTogglePin={handleTogglePin}
             />
           ) : (
@@ -338,7 +368,7 @@ export default function Home() {
                 setEditingTodo(todo);
                 setIsTaskModalOpen(true);
               }}
-              onDelete={handleDeleteTodo}
+              onDelete={handleRequestDeleteTodo}
               onToggleSubtask={handleToggleSubtask}
               onQuickAdd={handleQuickAdd}
               onOpenTaskModal={() => {
@@ -375,6 +405,17 @@ export default function Home() {
         onSave={handleSaveNote}
         initialNote={editingNote}
         categories={categories}
+      />
+
+      {/* Global Deletion Confirmation Modal */}
+      <ConfirmModal
+        isOpen={!!deleteTarget}
+        title={deleteTarget?.type === 'todo' ? 'Delete Task' : 'Delete Note'}
+        message={`Are you sure you want to delete this ${deleteTarget?.type === 'todo' ? 'task' : 'note'}?`}
+        itemName={deleteTarget?.title}
+        confirmLabel={deleteTarget?.type === 'todo' ? 'Delete Task' : 'Delete Note'}
+        onConfirm={handleConfirmDelete}
+        onClose={() => setDeleteTarget(null)}
       />
     </div>
   );

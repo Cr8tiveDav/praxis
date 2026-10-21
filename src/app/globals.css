@@ -577,6 +577,19 @@ html, body {
   border-color: var(--text-dim);
 }
 
+.btn-danger {
+  background: var(--priority-urgent);
+  color: #FFFFFF;
+  border-color: transparent;
+  box-shadow: 0 4px 14px -2px rgba(244, 63, 94, 0.35);
+}
+
+.btn-danger:hover {
+  background: #e11d48;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px -2px rgba(244, 63, 94, 0.5);
+}
+
 
 
 .btn-icon {
