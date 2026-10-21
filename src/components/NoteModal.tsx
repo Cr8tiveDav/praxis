@@ -199,11 +199,10 @@ export const NoteModal: React.FC<NoteModalProps> = ({
   ];
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" aria-modal="true" role="dialog">
       <div
         className="modal-dialog"
         style={{ maxWidth: '680px' }}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Color accent bar */}
         <div style={{ height: 4, background: color, borderRadius: 'var(--radius-lg) var(--radius-lg) 0 0', margin: '-1px -1px 0 -1px' }} />

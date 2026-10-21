@@ -11,10 +11,10 @@ import {
   FileText,
   Calendar,
   Tag,
-  AlertCircle,
   CheckSquare,
 } from 'lucide-react';
 import { TodoItem, Priority, SubTask } from '../types';
+import { ConfirmModal } from './ConfirmModal';
 
 // ─── Priority Metadata ──────────────────────────────────────────────────────
 
@@ -87,6 +87,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   const [subtasks, setSubtasks] = useState<SubTask[]>(initialTodo?.subtasks ?? []);
   const [newSubtask, setNewSubtask] = useState('');
   const [subtasksOpen, setSubtasksOpen] = useState(true);
+  const [subtaskToDelete, setSubtaskToDelete] = useState<{ id: string; title: string } | null>(null);
 
   // Refs
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -110,6 +111,8 @@ export const ItemModal: React.FC<ItemModalProps> = ({
     requestAnimationFrame(() => titleRef.current?.focus());
 
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (subtaskToDelete) return;
+
       if (e.key === 'Escape') {
         onClose();
         return;
@@ -147,7 +150,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, subtaskToDelete]);
 
   // Subtask handlers
   const handleAddSubtask = useCallback(() => {
@@ -201,12 +204,11 @@ export const ItemModal: React.FC<ItemModalProps> = ({
   const pct = subtasks.length > 0 ? Math.round((doneCount / subtasks.length) * 100) : 0;
 
   return (
-    <div className="modal-overlay" onClick={onClose} aria-modal="true" role="dialog">
+    <div className="modal-overlay" aria-modal="true" role="dialog">
       <div
         ref={dialogRef}
         className="modal-dialog"
         style={{ maxWidth: '640px' }}
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Dynamic Priority Top Accent Stripe */}
         <div
@@ -501,7 +503,7 @@ export const ItemModal: React.FC<ItemModalProps> = ({
                           <button
                             type="button"
                             className="checklist-delete-btn"
-                            onClick={() => handleRemoveSubtask(st.id)}
+                            onClick={() => setSubtaskToDelete({ id: st.id, title: st.title })}
                             aria-label={`Delete "${st.title}"`}
                             title="Remove subtask"
                           >
@@ -550,6 +552,23 @@ export const ItemModal: React.FC<ItemModalProps> = ({
           </div>
         </form>
       </div>
+
+      {/* Confirmation Modal for Subtask deletion */}
+      <ConfirmModal
+        isOpen={!!subtaskToDelete}
+        title="Delete Subtask"
+        message="Are you sure you want to delete this subtask?"
+        itemName={subtaskToDelete?.title}
+        confirmLabel="Delete Subtask"
+        onConfirm={() => {
+          if (subtaskToDelete) {
+            handleRemoveSubtask(subtaskToDelete.id);
+            setSubtaskToDelete(null);
+          }
+        }}
+        onClose={() => setSubtaskToDelete(null)}
+        zIndex={160}
+      />
     </div>
   );
 };
