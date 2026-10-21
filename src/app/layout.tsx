@@ -1,20 +1,5 @@
 import type { Metadata, Viewport } from 'next';
-import { Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
-
-const plusJakartaSans = Plus_Jakarta_Sans({
-  variable: '--font-sans',
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700', '800'],
-  display: 'swap',
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: '--font-mono',
-  subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  display: 'swap',
-});
 
 export const metadata: Metadata = {
   title: 'Praxis — Todo & Notes Hub',
@@ -35,12 +20,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html
-      lang="en"
-      className={`${plusJakartaSans.variable} ${jetbrainsMono.variable}`}
-      suppressHydrationWarning
-    >
+    <html lang="en" suppressHydrationWarning>
       <head>
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link
+          href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap"
+          rel="stylesheet"
+        />
         {/*
           Inline script: runs synchronously before first paint.
           Reads the saved theme from localStorage and sets data-theme on <html>
